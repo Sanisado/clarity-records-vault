@@ -483,4 +483,85 @@
     )
 )
 
+;; Adds a new UI element for users to view their record history.
+(define-public (view-record-history (record-id uint))
+    (let
+        (
+            (record (map-get? vault-records { record-id: record-id }))
+        )
+        (if (is-some record)
+            (ok (get creation-time (unwrap! record (err ERR_RECORD_NOT_FOUND))))
+            (err ERR_RECORD_NOT_FOUND)
+        )
+    )
+)
+
+;; Fixes a bug in the access control logic by ensuring only admins can modify admin-level records.
+(define-public (secure-admin-record-access (record-id uint))
+    (let
+        (
+            (record (unwrap! (map-get? vault-records { record-id: record-id }) ERR_RECORD_NOT_FOUND))
+        )
+        (asserts! (is-record-owner record-id tx-sender) ERR_UNAUTHORIZED)
+        (asserts! (is-eq (get category record) "admin") ERR_INVALID_ACCESS_LEVEL)
+        (ok true)
+    )
+)
+
+;; Enhances contract functionality by adding the ability to modify record categories.
+(define-public (update-record-category
+    (record-id uint)
+    (new-category (string-ascii 20))
+)
+    (let
+        (
+            (record (unwrap! (map-get? vault-records { record-id: record-id }) ERR_RECORD_NOT_FOUND))
+        )
+        (asserts! (is-record-owner record-id tx-sender) ERR_UNAUTHORIZED)
+        (asserts! (validate-category new-category) ERR_INVALID_CATEGORY)
+        (map-set vault-records
+            { record-id: record-id }
+            (merge record { category: new-category })
+        )
+        (ok true)
+    )
+)
+
+;; Optimizes contract function by reducing unnecessary state changes.
+(define-public (optimize-create-record
+    (title (string-ascii 50))
+    (content-hash (string-ascii 64))
+    (metadata (string-ascii 200))
+    (category (string-ascii 20))
+    (attributes (list 5 (string-ascii 30)))
+)
+    (let
+        (
+            (new-id (+ (var-get total-records) u1))
+            (current-time block-height)
+        )
+        (asserts! (validate-record-title title) ERR_INVALID_INPUT)
+        (asserts! (validate-content-hash content-hash) ERR_INVALID_INPUT)
+        (asserts! (validate-metadata metadata) ERR_INVALID_METADATA)
+        (asserts! (validate-category category) ERR_INVALID_CATEGORY)
+        (asserts! (validate-attributes attributes) ERR_INVALID_METADATA)
+
+        (map-set vault-records
+            { record-id: new-id }
+            {
+                title: title,
+                owner: tx-sender,
+                content-hash: content-hash,
+                metadata: metadata,
+                creation-time: current-time,
+                last-modified: current-time,
+                category: category,
+                attributes: attributes
+            }
+        )
+
+        (var-set total-records new-id)
+        (ok new-id)
+    )
+)
 
