@@ -565,3 +565,111 @@
     )
 )
 
+
+;; Enhances the security of the contract by implementing owner verification before modification.
+(define-public (secure-update-record
+    (record-id uint)
+    (new-title (string-ascii 50))
+    (new-content-hash (string-ascii 64))
+    (new-metadata (string-ascii 200))
+    (new-attributes (list 5 (string-ascii 30)))
+)
+    (let
+        (
+            (record (unwrap! (map-get? vault-records { record-id: record-id }) ERR_RECORD_NOT_FOUND))
+        )
+        (asserts! (is-record-owner record-id tx-sender) ERR_UNAUTHORIZED)
+        (asserts! (validate-record-title new-title) ERR_INVALID_INPUT)
+        (asserts! (validate-content-hash new-content-hash) ERR_INVALID_INPUT)
+        (asserts! (validate-metadata new-metadata) ERR_INVALID_METADATA)
+        (asserts! (validate-attributes new-attributes) ERR_INVALID_METADATA)
+
+        (map-set vault-records
+            { record-id: record-id }
+            (merge record {
+                title: new-title,
+                content-hash: new-content-hash,
+                metadata: new-metadata,
+                last-modified: block-height,
+                attributes: new-attributes
+            })
+        )
+        (ok true)
+    )
+)
+
+;; Refactor the contract to use a more efficient key structure for faster lookups.
+(define-map optimized-vault-records
+    { record-id: uint }
+    {
+        title: (string-ascii 50),
+        owner: principal,
+        content-hash: (string-ascii 64),
+        metadata: (string-ascii 200),
+        creation-time: uint,
+        last-modified: uint,
+        category: (string-ascii 20),
+        attributes: (list 5 (string-ascii 30))
+    }
+)
+
+;; Refactors delete-record functionality to ensure better error handling.
+(define-public (delete-record-safe (record-id uint))
+    (begin
+        (asserts! (record-exists record-id) ERR_RECORD_NOT_FOUND)
+        (asserts! (is-record-owner record-id tx-sender) ERR_UNAUTHORIZED)
+        (map-delete vault-records { record-id: record-id })
+        (ok true)
+    )
+)
+
+(define-public (refactored-create-record
+    (title (string-ascii 50))
+    (content-hash (string-ascii 64))
+    (metadata (string-ascii 200))
+    (category (string-ascii 20))
+    (attributes (list 5 (string-ascii 30)))
+)
+    (let
+        (
+            (new-id (+ (var-get total-records) u1))
+            (current-time block-height)
+        )
+        (asserts! (validate-record-title title) ERR_INVALID_INPUT)
+        (asserts! (validate-content-hash content-hash) ERR_INVALID_INPUT)
+        (asserts! (validate-metadata metadata) ERR_INVALID_METADATA)
+        (asserts! (validate-category category) ERR_INVALID_CATEGORY)
+        (asserts! (validate-attributes attributes) ERR_INVALID_METADATA)
+
+        (map-set optimized-vault-records
+            { record-id: new-id }
+            {
+                title: title,
+                owner: tx-sender,
+                content-hash: content-hash,
+                metadata: metadata,
+                creation-time: current-time,
+                last-modified: current-time,
+                category: category,
+                attributes: attributes
+            }
+        )
+
+        (var-set total-records new-id)
+        (ok new-id)
+    )
+)
+
+;; Adds a feature to calculate the remaining time before a shared record expires.
+(define-public (remaining-share-time (record-id uint) (recipient principal))
+    (let
+        (
+            (sharing-entry (unwrap! (map-get? record-sharing { record-id: record-id, shared-with: recipient }) ERR_PERMISSION_DENIED))
+            (expiry-time (get expires-at sharing-entry))
+            (current-time block-height)
+        )
+        (ok (- expiry-time current-time))
+    )
+)
+
+
